@@ -1,0 +1,56 @@
+name: firewall-demo              # unique project name (the folder "demo" is also used by other demos)
+
+x-client: &client                 # shared settings for the two client machines
+  build:
+    dockerfile_inline: |
+      FROM alpine:3.20
+      RUN apk add --no-cache curl nmap redis
+  command: ["sleep", "infinity"]  # keep running so we can exec commands inside
+
+services:
+  # The "VM": owns the network stack and the firewall. It starts with NO rules (wide open).
+  server:
+    build:
+      dockerfile_inline: |
+        FROM alpine:3.20
+        RUN apk add --no-cache iptables curl
+    command: ["sleep", "infinity"]
+    cap_add: [NET_ADMIN]          # allowed to change firewall rules
+    volumes:
+      - ./firewall:/firewall:ro
+    networks:
+      public:
+        ipv4_address: 172.29.10.10
+
+  # Three apps running "on" the server: they share its network stack, so its firewall protects them
+  web:
+    image: nginx:alpine           # public website, port 80
+    network_mode: "service:server"
+  admin:
+    image: traefik/whoami         # pretend admin panel, port 9000
+    command: ["--port", "9000"]
+    network_mode: "service:server"
+  db:
+    image: redis:alpine           # database, port 6379, no password (a classic mistake)
+    command: ["redis-server", "--protected-mode", "no"]
+    network_mode: "service:server"
+
+  # A random machine on the internet
+  attacker:
+    <<: *client
+    networks:
+      public:
+        ipv4_address: 172.29.10.30
+
+  # The office machine that is trusted to use the admin panel
+  office:
+    <<: *client
+    networks:
+      public:
+        ipv4_address: 172.29.10.20
+
+networks:
+  public:
+    ipam:
+      config:
+        - subnet: 172.29.10.0/24  # fixed IPs so firewall rules can refer to them
