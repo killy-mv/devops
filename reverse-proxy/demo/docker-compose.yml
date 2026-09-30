@@ -1,0 +1,13 @@
+services:
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "8080:80"                 # only the proxy is exposed to your machine
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [app1, app2]
+
+  app1:
+    image: traefik/whoami         # tiny app that echoes request info
+  app2:
+    image: traefik/whoami         # tiny app that echoes request info
