@@ -1,0 +1,36 @@
+name: forward-proxy-demo        # unique project name (the folder "demo" is also used by reverse-proxy)
+
+services:
+  proxy:
+    image: ubuntu/squid
+    volumes:
+      - ./squid/squid.conf:/etc/squid/squid.conf:ro
+      - ./squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
+    networks:
+      - internal                  # reachable by the client
+      - external                  # has a route to the internet
+
+  client:
+    image: curlimages/curl
+    entrypoint: ["sleep", "infinity"]   # keep running so we can exec curl inside
+    environment:
+      HTTP_PROXY: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      NO_PROXY: localhost,127.0.0.1
+    networks:
+      - internal                  # ONLY the internal network: no direct internet
+
+  client-auto:                    # same as client, but already configured to use the proxy (Step 8b)
+    image: curlimages/curl
+    entrypoint: ["sleep", "infinity"]
+    environment:
+      HTTP_PROXY: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      NO_PROXY: localhost,127.0.0.1
+    networks:
+      - internal
+
+networks:
+  internal:
+    internal: true                # Docker gives this network no route outside
+  external: {}

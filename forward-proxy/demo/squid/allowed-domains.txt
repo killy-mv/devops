@@ -1,0 +1,4 @@
+# One domain per line. A leading dot also matches subdomains.
+.example.com
+.github.com
+.google.com
