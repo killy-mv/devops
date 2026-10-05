@@ -1,0 +1,14 @@
+{
+  "name": "bakery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny app for the CI/CD demo",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
