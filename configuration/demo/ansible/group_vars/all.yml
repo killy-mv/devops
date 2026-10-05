@@ -1,0 +1,8 @@
+# Applies to every server
+admin_users:
+  - alice
+  - bob
+
+common_packages:
+  - curl
+  - htop

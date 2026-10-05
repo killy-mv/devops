@@ -1,0 +1,9 @@
+# Managed by Ansible (templates/nginx-site.conf.j2). Manual edits will be overwritten.
+server {
+    listen 80 default_server;
+    root /var/www/html;
+    index index.html;
+
+    # Shows which server answered: curl -I localhost:8091
+    add_header X-Served-By {{ inventory_hostname }};
+}

@@ -1,0 +1,78 @@
+# Each play: "on THESE hosts, make sure THESE things are true"
+
+- name: Common setup for every server
+  hosts: all
+  become: true                    # run tasks with sudo
+  tasks:
+    - name: Install common packages
+      ansible.builtin.apt:
+        name: "{{ common_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600    # skip `apt update` if done in the last hour
+
+    - name: Create admin users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+      loop: "{{ admin_users }}"
+
+- name: Web servers
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+
+    - name: Deploy nginx site config
+      ansible.builtin.template:
+        src: nginx-site.conf.j2
+        dest: /etc/nginx/sites-available/default
+      notify: Reload nginx        # only runs if this task changed something
+
+    - name: Deploy home page
+      ansible.builtin.template:
+        src: index.html.j2
+        dest: /var/www/html/index.html
+
+    - name: Make sure nginx is running
+      ansible.builtin.service:
+        name: nginx
+        state: started
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+- name: Database servers
+  hosts: dbservers
+  become: true
+  tasks:
+    - name: Install redis
+      ansible.builtin.apt:
+        name: redis-server
+        state: present
+
+    - name: Limit redis memory
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^#? *maxmemory '
+        line: maxmemory 64mb
+      notify: Restart redis
+
+    - name: Make sure redis is running
+      ansible.builtin.service:
+        name: redis-server
+        state: started
+
+  handlers:
+    - name: Restart redis
+      ansible.builtin.service:
+        name: redis-server
+        state: restarted

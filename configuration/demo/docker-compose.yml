@@ -1,0 +1,34 @@
+# Shared settings for the 3 blank "servers"
+x-server: &server
+  build: ./server
+  image: ansible-demo-server
+  volumes:
+    - ssh-keys:/keys:ro           # read the control node's public key
+
+services:
+  # Where you run Ansible from (your laptop, in real life)
+  control:
+    build: ./control
+    volumes:
+      - ./ansible:/ansible        # playbook, inventory, templates
+      - ssh-keys:/keys            # SSH key pair, generated on first start
+    environment:
+      ANSIBLE_CONFIG: /ansible/ansible.cfg
+
+  # Blank servers: only SSH + Python, nothing else installed
+  web1:
+    <<: *server
+    hostname: web1
+    ports:
+      - "8091:80"
+  web2:
+    <<: *server
+    hostname: web2
+    ports:
+      - "8092:80"
+  db1:
+    <<: *server
+    hostname: db1
+
+volumes:
+  ssh-keys:
