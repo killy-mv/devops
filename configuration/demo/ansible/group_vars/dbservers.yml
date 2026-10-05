@@ -1,0 +1,2 @@
+# Applies to servers in [dbservers] only
+postgres_version: 15              # Debian 12 ships PostgreSQL 15

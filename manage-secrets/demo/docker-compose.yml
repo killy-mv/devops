@@ -1,0 +1,61 @@
+name: vault-demo                  # unique project name (the folder "demo" is also used by other demos)
+
+services:
+  # The vault: stores secrets, decides who can read them, logs every access
+  vault:
+    image: hashicorp/vault:1.17
+    # Dev mode: in memory, already unsealed, root token "root". NEVER use in production.
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      # So `docker compose exec vault vault ...` works as admin
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_TOKEN: root
+    cap_add: [IPC_LOCK]
+    ports:
+      - "8200:8200"               # web UI: http://localhost:8200 (token: root)
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 2s
+      retries: 15
+
+  # The bakery database. Only Vault should ever use the admin password.
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bakery
+      POSTGRES_PASSWORD: postgres-admin-pw   # Vault rotates this away in step 8
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # -h 127.0.0.1: only healthy once the real server (not the init one) is up
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+      interval: 2s
+      retries: 15
+
+  # One-shot: configures Vault (secrets, policy, DB engine, app login), then exits
+  setup:
+    image: hashicorp/vault:1.17
+    entrypoint: ["sh", "/setup/setup.sh"]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+    volumes:
+      - ./vault:/setup:ro
+      - app-creds:/app-creds        # hands the app its login (role_id + secret_id)
+    depends_on:
+      vault: { condition: service_healthy }
+      db: { condition: service_healthy }
+
+  # The bakery app. Knows NO passwords; asks Vault at startup.
+  # Run on demand: docker compose run --rm app
+  app:
+    build: ./app
+    profiles: [app]
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - app-creds:/app-creds:ro
+
+volumes:
+  app-creds:

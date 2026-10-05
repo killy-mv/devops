@@ -19,7 +19,7 @@ Without a tool, you SSH into each server and type `apt install ...`, edit files 
 ```
                           SSH   ┌── web1  (webservers) ── nginx ── localhost:8091
 control  ── ansible-playbook ───┼── web2  (webservers) ── nginx ── localhost:8092
-(Ansible lives here only)       └── db1   (dbservers)  ── redis
+(Ansible lives here only)       └── db1   (dbservers)  ── postgres
 ```
 
 | In real life                         | In the demo                                       |
@@ -45,7 +45,7 @@ docker compose up -d --build
 The servers are empty. There's no web server yet:
 
 ```bash
-curl localhost:8091                       # fails: connection refused/reset
+curl localhost:8091                       # fails: "Empty reply from server" (nothing listens on port 80 yet)
 docker compose exec web1 which nginx      # nothing
 ```
 
@@ -84,7 +84,7 @@ ansible db1 -m setup -a "filter=ansible_distribution*"   # facts Ansible collect
 ansible-playbook site.yml --check --diff
 ```
 
-Some tasks may fail in check mode on a blank server (e.g. "start nginx" before nginx is installed). That's expected, because nothing was really installed.
+On a blank server, the dry run stops at `Make sure nginx is running` with `Could not find the requested service nginx`. That's expected: in check mode nginx was only *pretend*-installed. When every host in a play fails, Ansible ends the whole run, so `db1` never reaches its play. Once nginx is really installed, check mode runs cleanly (step 7).
 
 Now do it for real:
 
@@ -101,18 +101,18 @@ TASK [Install nginx]             changed: [web1] changed: [web2]
 ...
 RUNNING HANDLER [Reload nginx]   changed: [web1] changed: [web2]
 PLAY RECAP ****
-db1   : ok=8  changed=5  failed=0
-web1  : ok=9  changed=6  failed=0
-web2  : ok=9  changed=6  failed=0
+db1   : ok=8  changed=6  failed=0
+web1  : ok=9  changed=7  failed=0
+web2  : ok=9  changed=7  failed=0
 ```
 
-(Numbers will vary slightly.) From your normal terminal, outside the container:
+From your normal terminal, outside the container:
 
 ```bash
 curl localhost:8091          # Sweet Bakery ... Served by web1
 curl localhost:8092          # Sweet Bakery ... Served by web2
 curl -sI localhost:8091 | grep X-Served-By
-docker compose exec db1 redis-cli ping           # PONG
+docker compose exec db1 su postgres -c 'psql -tAc "show max_connections"'   # 50
 docker compose exec web1 id alice                # alice is in group sudo
 ```
 
@@ -192,7 +192,8 @@ demo/
     ├── site.yml                 # the playbook: WHAT each group should look like
     ├── group_vars/
     │   ├── all.yml              # variables for every server (users, packages)
-    │   └── webservers.yml       # variables for web servers (page text)
+    │   ├── webservers.yml       # variables for web servers (page text)
+    │   └── dbservers.yml        # variables for db servers (PostgreSQL version)
     └── templates/
         ├── index.html.j2        # home page, filled in per server
         └── nginx-site.conf.j2   # nginx config, filled in per server
@@ -211,7 +212,7 @@ demo/
 | Module        | The built-in tool a task uses                                | `apt`, `user`, `template`, `service`, `lineinfile` |
 | Variables     | Values that differ per group/host                            | `group_vars/*.yml`                   |
 | Template      | A file with `{{ placeholders }}` (Jinja2)                    | `templates/*.j2`                     |
-| Handler       | A task that runs only when notified by a change              | `Reload nginx`, `Restart redis`      |
+| Handler       | A task that runs only when notified by a change              | `Reload nginx`, `Restart PostgreSQL` |
 | Facts         | Info Ansible gathers about each server (OS, IPs, ...)        | `ansible db1 -m setup`               |
 | `become`      | Run with sudo                                                | `become: true`                       |
 
@@ -236,7 +237,9 @@ If 3 tasks notify `Reload nginx`, nginx is reloaded **once**, after all tasks in
 
 ### Containers are not quite real servers
 
-These "servers" have no `systemd`; `sshd` is the main process. Ansible's `service` module falls back to the old `service`/`/etc/init.d` scripts, which works for nginx and redis. On a real VM you'd use the same playbook unchanged, and it would use systemd.
+These "servers" have no `systemd`; `sshd` is the main process. Ansible's `service` module falls back to the old `service`/`/etc/init.d` scripts, which works for nginx and PostgreSQL. On a real VM you'd use the same playbook unchanged, and it would use systemd.
+
+Not every package's old init script works in a container. Debian's Redis script, for example, can't stop its own process (it matches `/usr/bin/redis-server`, which is a symlink), so `restarted` silently does nothing and Ansible reports `changed` forever. That's why the demo uses PostgreSQL. If a task never settles to `ok`, check the service's `status` by hand.
 
 Also, the servers aren't persistent: `docker compose down` + `up` gives you blank servers again. That's handy for re-running the walkthrough.
 

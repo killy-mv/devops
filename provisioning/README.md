@@ -25,6 +25,12 @@ Requirements: Terraform >= 1.5 and Docker.
 > WSL: turn on *Docker Desktop → Settings → Resources → WSL integration* for your distro so `/var/run/docker.sock` exists.
 > Windows `terraform.exe`: add `-var docker_host=npipe:////./pipe/docker_engine`.
 
+No Terraform installed? Run it from its official image instead. It reaches Docker Desktop through the mounted socket:
+
+```bash
+alias terraform='docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -w /work hashicorp/terraform:1.9'
+```
+
 ```bash
 cd provisioning/demo
 terraform init      # download the docker provider into .terraform/
@@ -108,6 +114,8 @@ terraform plan       # tf-app-1 will be created
 terraform apply      # back to the desired state
 ```
 
+After `apply`, nginx finds the new `tf-app-1` within about 5 seconds, even though it has a new IP. See *nginx and recreated apps* below.
+
 Terraform compares **real infrastructure** against **your code**, using the state file to know which objects it owns. This is the core idea of declarative IaC: you describe *what* you want, not the steps.
 
 ### 4. Apply twice, nothing happens
@@ -133,6 +141,26 @@ Some changes can be applied to a running object; others need **destroy then crea
 ### `depends_on`
 
 Terraform builds a dependency graph from references (the proxy references `docker_network.demo.id`, so the network comes first). The proxy doesn't reference the apps directly, so `depends_on` makes Terraform create the apps first. Without it, nginx can start before `app-1` exists and crash with `host not found in upstream`.
+
+### nginx and recreated apps
+
+By default nginx looks up `app-1` → IP **once, at startup**. After the drift fix, `tf-app-1` is a new container, possibly with a new IP, but Terraform only recreates what's missing and leaves the proxy alone. nginx keeps sending traffic to the old IPs, and some apps get nothing.
+
+The template fixes this inside nginx (needs nginx 1.27.3+, which `nginx:alpine` has):
+
+```nginx
+resolver 127.0.0.11 valid=5s;   # Docker's internal DNS, re-checked every 5s
+upstream apps {
+    zone apps 64k;              # required for "resolve"
+    server app-1:80 resolve;
+}
+```
+
+The lesson: Terraform makes resources *exist* as described, but it doesn't know how your apps depend on each other at runtime. `lifecycle { replace_triggered_by = [...] }` can restart the proxy when an app is *replaced*, but not when an app is recreated after someone deleted it.
+
+### Commit `.terraform.lock.hcl`
+
+`terraform init` writes it to record the exact provider version and checksums. Commit it, so everyone (and CI) uses the same provider version. Don't commit `.terraform/`, which is just the downloaded plugin.
 
 ## Handy commands
 

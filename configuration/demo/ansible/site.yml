@@ -54,25 +54,25 @@
   hosts: dbservers
   become: true
   tasks:
-    - name: Install redis
+    - name: Install PostgreSQL
       ansible.builtin.apt:
-        name: redis-server
+        name: postgresql
         state: present
 
-    - name: Limit redis memory
+    - name: Limit connections
       ansible.builtin.lineinfile:
-        path: /etc/redis/redis.conf
-        regexp: '^#? *maxmemory '
-        line: maxmemory 64mb
-      notify: Restart redis
+        path: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+        regexp: '^#?max_connections'
+        line: max_connections = 50
+      notify: Restart PostgreSQL     # this setting only applies after a restart
 
-    - name: Make sure redis is running
+    - name: Make sure PostgreSQL is running
       ansible.builtin.service:
-        name: redis-server
+        name: postgresql
         state: started
 
   handlers:
-    - name: Restart redis
+    - name: Restart PostgreSQL
       ansible.builtin.service:
-        name: redis-server
+        name: postgresql
         state: restarted

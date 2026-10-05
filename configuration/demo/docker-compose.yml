@@ -1,3 +1,5 @@
+name: ansible-demo                # unique project name (the folder "demo" is also used by other demos)
+
 # Shared settings for the 3 blank "servers"
 x-server: &server
   build: ./server
