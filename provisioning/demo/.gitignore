@@ -1,0 +1,9 @@
+# Provider plugins (re-downloaded by terraform init)
+.terraform/
+# State holds what Terraform created; it's local to your machine
+*.tfstate
+*.tfstate.*
+crash.log
+# Local overrides
+*.tfvars
+!example.tfvars
